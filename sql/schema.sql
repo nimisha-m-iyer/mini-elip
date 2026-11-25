@@ -29,3 +29,20 @@ CREATE INDEX IF NOT EXISTS jobs_fts_idx ON jobs USING GIN (fts);
 CREATE INDEX IF NOT EXISTS jobs_active_idx ON jobs (expired_at);
 CREATE INDEX IF NOT EXISTS jobs_dedupe_idx ON jobs (dedupe_key);
 CREATE INDEX IF NOT EXISTS jobs_embedding_idx ON jobs USING hnsw (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS users (
+    telegram_id    BIGINT PRIMARY KEY,
+    username       TEXT,
+    profile        JSONB,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_active_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id          BIGSERIAL PRIMARY KEY,
+    telegram_id BIGINT NOT NULL,
+    kind        TEXT NOT NULL,
+    detail      JSONB NOT NULL DEFAULT '{}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS events_user_idx ON events (telegram_id, kind);

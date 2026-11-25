@@ -146,4 +146,6 @@ def profile_to_query(p: Profile) -> str:
         parts.append("Roles: " + ", ".join(p.roles_wanted))
     if p.skills:
         parts.append("Skills: " + ", ".join(p.skills[:15]))
+    if p.seniority in ("intern", "junior"):
+        parts.append("Looking for internship or entry-level roles")
     return ". ".join(parts)

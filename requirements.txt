@@ -7,3 +7,4 @@ tenacity==9.0.0
 beautifulsoup4==4.12.3
 fastembed==0.4.2
 pypdf==5.1.0
+python-telegram-bot==21.6

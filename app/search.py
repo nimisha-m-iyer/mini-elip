@@ -39,7 +39,10 @@ def build_tsquery(text):
     return " | ".join(out[:40])
 
 
-def _filters(remote_only, location):
+SENIOR_TITLE_RE = r"\m(staff|principal|senior|sr|lead|director|head|vp|manager|architect|distinguished|fellow)\M"
+
+
+def _filters(remote_only, location, exclude_senior=False):
     where = "expired_at IS NULL AND embedding IS NOT NULL"
     params = []
     if remote_only:
@@ -47,8 +50,10 @@ def _filters(remote_only, location):
     if location:
         where += " AND location ILIKE %s"
         params.append(f"%{location}%")
+    if exclude_senior:
+        where += " AND title !~* %s"
+        params.append(SENIOR_TITLE_RE)
     return where, params
-
 
 def vector_search(conn, query, where, params, limit=CANDIDATES):
     qvec = to_pgvector(embed_texts([QUERY_PREFIX + query])[0])
@@ -113,10 +118,10 @@ def rerank_scores(query, jobs):
     return [float(s) for s in get_reranker().rerank(query, texts)]
 
 
-def search(query, mode="hybrid_rerank", k=10, remote_only=False, location=None):
+def search(query, mode="hybrid_rerank", k=10, remote_only=False, location=None, exclude_senior=False):
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
-    where, params = _filters(remote_only, location)
+    where, params = _filters(remote_only, location, exclude_senior)
 
     with get_conn() as conn:
         vec_ids = vector_search(conn, query, where, params) if mode != "fts" else []
