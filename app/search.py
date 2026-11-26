@@ -7,6 +7,7 @@ Modes (the same code path is reused by the evals in Phase 8):
   hybrid_rerank   hybrid, then a cross-encoder rescoring the top candidates
 """
 import re
+from app.config import settings
 from functools import lru_cache
 
 from fastembed.rerank.cross_encoder import TextCrossEncoder
@@ -113,7 +114,7 @@ def fetch_jobs(conn, ids):
 
 @lru_cache(maxsize=1)
 def get_reranker():
-    return TextCrossEncoder(model_name=RERANK_MODEL, cache_dir="/models")
+    return TextCrossEncoder(model_name=RERANK_MODEL, cache_dir=settings.model_cache_dir)
 
 
 def rerank_scores(query, jobs):
@@ -129,7 +130,9 @@ def search(query, mode="hybrid_rerank", k=10, remote_only=False, location=None,
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     where, params = _filters(remote_only, location, exclude_senior, locations)
-
+    if mode == "hybrid_rerank" and not settings.rerank_enabled:
+        mode = "hybrid"  # reranker switched off to save memory
+        
     with get_conn() as conn:
         vec_ids = vector_search(conn, query, where, params) if mode != "fts" else []
         fts_ids = fts_search(conn, query, where, params) if mode != "vector" else []

@@ -129,20 +129,24 @@ async def on_error(update, context: ContextTypes.DEFAULT_TYPE):
 
 def _warmup():
     from app.embeddings import embed_texts
-    from app.search import rerank_scores
     embed_texts(["warm up"])
-    rerank_scores("warm up", [{"title": "t", "company_name": "c", "location": "l", "description": "d"}])
+    if settings.rerank_enabled:
+        from app.search import rerank_scores
+        rerank_scores("warm up", [{"title": "t", "company_name": "c", "location": "l", "description": "d"}])
 
 
 async def post_init(app: Application):
-    await run(_warmup)  # load both models once, so the first user is not slow
+    await run(_warmup)  # load the models once, so the first user is not slow
     log.info("models warmed up, bot is ready")
 
 
-def main():
+def build_application(with_warmup=True):
     if not settings.telegram_bot_token:
-        raise SystemExit("TELEGRAM_BOT_TOKEN is empty. Put it in .env and recreate the bot container.")
-    app = Application.builder().token(settings.telegram_bot_token).post_init(post_init).build()
+        raise SystemExit("TELEGRAM_BOT_TOKEN is empty. Put it in .env and recreate the container.")
+    builder = Application.builder().token(settings.telegram_bot_token).concurrent_updates(True)
+    if with_warmup:
+        builder = builder.post_init(post_init)
+    app = builder.build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("matches", matches_cmd))
@@ -150,7 +154,12 @@ def main():
     app.add_handler(MessageHandler(filters.Document.ALL, on_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_error_handler(on_error)
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    return app
+
+
+def main():
+    """Local development: polling mode."""
+    build_application().run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":

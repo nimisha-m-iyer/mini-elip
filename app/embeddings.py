@@ -2,13 +2,14 @@ from functools import lru_cache
 
 from fastembed import TextEmbedding
 
+from app.config import settings
+
 MODEL_NAME = "BAAI/bge-small-en-v1.5"  # 384 dimensions, runs on CPU
 
 
 @lru_cache(maxsize=1)
 def get_model():
-    # cache_dir is a Docker volume, so the model downloads only once.
-    return TextEmbedding(model_name=MODEL_NAME, cache_dir="/models")
+    return TextEmbedding(model_name=MODEL_NAME, cache_dir=settings.model_cache_dir)
 
 
 def embed_texts(texts):
