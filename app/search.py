@@ -39,10 +39,13 @@ def build_tsquery(text):
     return " | ".join(out[:40])
 
 
-SENIOR_TITLE_RE = r"\m(staff|principal|senior|sr|lead|director|head|vp|manager|architect|distinguished|fellow)\M"
+SENIOR_TITLE_RE = (
+    r"\m(staff|principal|senior|sr|lead|director|head|vp|manager|architect|distinguished|"
+    r"fellow|research scientist|researcher|member of technical staff|phd)\M"
+)
 
 
-def _filters(remote_only, location, exclude_senior=False):
+def _filters(remote_only, location, exclude_senior=False, locations=None):
     where = "expired_at IS NULL AND embedding IS NOT NULL"
     params = []
     if remote_only:
@@ -50,6 +53,9 @@ def _filters(remote_only, location, exclude_senior=False):
     if location:
         where += " AND location ILIKE %s"
         params.append(f"%{location}%")
+    if locations:  # match ANY of these location terms
+        where += " AND (" + " OR ".join(["location ILIKE %s"] * len(locations)) + ")"
+        params.extend(f"%{l}%" for l in locations)
     if exclude_senior:
         where += " AND title !~* %s"
         params.append(SENIOR_TITLE_RE)
@@ -118,10 +124,11 @@ def rerank_scores(query, jobs):
     return [float(s) for s in get_reranker().rerank(query, texts)]
 
 
-def search(query, mode="hybrid_rerank", k=10, remote_only=False, location=None, exclude_senior=False):
+def search(query, mode="hybrid_rerank", k=10, remote_only=False, location=None,
+           exclude_senior=False, locations=None):
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
-    where, params = _filters(remote_only, location, exclude_senior)
+    where, params = _filters(remote_only, location, exclude_senior, locations)
 
     with get_conn() as conn:
         vec_ids = vector_search(conn, query, where, params) if mode != "fts" else []
