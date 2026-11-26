@@ -39,7 +39,24 @@ def log_event(telegram_id, kind, detail=None):
         )
 
 
+def set_digest(telegram_id, enabled):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET digest_enabled = %s WHERE telegram_id = %s", (enabled, telegram_id)
+        )
+
+
+def get_digest(telegram_id):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT digest_enabled FROM users WHERE telegram_id = %s", (telegram_id,)
+        ).fetchone()
+    return bool(row and row[0])
+
+
 def delete_user(telegram_id):
     with get_conn() as conn:
+        conn.execute("DELETE FROM feedback WHERE telegram_id = %s", (telegram_id,))
+        conn.execute("DELETE FROM matches WHERE telegram_id = %s", (telegram_id,))
         conn.execute("DELETE FROM events WHERE telegram_id = %s", (telegram_id,))
         conn.execute("DELETE FROM users WHERE telegram_id = %s", (telegram_id,))

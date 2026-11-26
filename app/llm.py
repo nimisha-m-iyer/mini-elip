@@ -56,3 +56,19 @@ def chat(messages, json_mode=True, temperature=0.0, max_tokens=4000):
     if not content.strip():
         raise LLMError("The model returned an empty reply (it may have run out of tokens).")
     return content
+
+def chat_with_tools(messages, tools, temperature=0.0, max_tokens=4000):
+    """One chat turn with tool calling. Returns the assistant message dict."""
+    if not settings.groq_api_key:
+        raise LLMError("GROQ_API_KEY is empty. Put your key in .env and recreate the app container.")
+    payload = {
+        "model": settings.groq_model,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": "auto",
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if "gpt-oss" in settings.groq_model:
+        payload["reasoning_effort"] = "low"
+    return _post(payload)["choices"][0]["message"]

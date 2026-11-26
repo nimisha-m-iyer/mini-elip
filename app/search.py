@@ -7,11 +7,11 @@ Modes (the same code path is reused by the evals in Phase 8):
   hybrid_rerank   hybrid, then a cross-encoder rescoring the top candidates
 """
 import re
-from app.config import settings
 from functools import lru_cache
 
 from fastembed.rerank.cross_encoder import TextCrossEncoder
 
+from app.config import settings
 from app.db import get_conn
 from app.embeddings import embed_texts, to_pgvector
 
@@ -28,6 +28,11 @@ STOPWORDS = {
     "are", "i", "my", "me", "who", "that", "this", "as", "be", "by", "we", "you", "your",
 }
 
+SENIOR_TITLE_RE = (
+    r"\m(staff|principal|senior|sr|lead|director|head|vp|manager|architect|distinguished|"
+    r"fellow|research scientist|researcher|member of technical staff|phd)\M"
+)
+
 
 def build_tsquery(text):
     """'Python backend engineer' -> 'python | backend | engineer' (OR semantics)."""
@@ -40,13 +45,8 @@ def build_tsquery(text):
     return " | ".join(out[:40])
 
 
-SENIOR_TITLE_RE = (
-    r"\m(staff|principal|senior|sr|lead|director|head|vp|manager|architect|distinguished|"
-    r"fellow|research scientist|researcher|member of technical staff|phd)\M"
-)
-
-
-def _filters(remote_only, location, exclude_senior=False, locations=None):
+def _filters(remote_only, location, exclude_senior=False, locations=None,
+             exclude_ids=None, exclude_companies=None):
     where = "expired_at IS NULL AND embedding IS NOT NULL"
     params = []
     if remote_only:
@@ -60,13 +60,20 @@ def _filters(remote_only, location, exclude_senior=False, locations=None):
     if exclude_senior:
         where += " AND title !~* %s"
         params.append(SENIOR_TITLE_RE)
+    if exclude_ids:
+        where += " AND NOT (id = ANY(%s))"
+        params.append(list(exclude_ids))
+    if exclude_companies:
+        where += " AND NOT (lower(coalesce(company_name, '')) = ANY(%s))"
+        params.append([c.lower() for c in exclude_companies])
     return where, params
 
-def vector_search(conn, query, where, params, limit=CANDIDATES):
-    qvec = to_pgvector(embed_texts([QUERY_PREFIX + query])[0])
+
+def vector_search(conn, query, where, params, limit=CANDIDATES, qvec=None):
+    vec = qvec if qvec is not None else embed_texts([QUERY_PREFIX + query])[0]
     rows = conn.execute(
         f"SELECT id FROM jobs WHERE {where} ORDER BY embedding <=> %s::vector LIMIT %s",
-        (*params, qvec, limit),
+        (*params, to_pgvector(vec), limit),
     ).fetchall()
     return [r[0] for r in rows]
 
@@ -126,15 +133,19 @@ def rerank_scores(query, jobs):
 
 
 def search(query, mode="hybrid_rerank", k=10, remote_only=False, location=None,
-           exclude_senior=False, locations=None):
+           exclude_senior=False, locations=None, query_vec=None,
+           exclude_ids=None, exclude_companies=None):
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
-    where, params = _filters(remote_only, location, exclude_senior, locations)
+    # NOTE: on a host with RERANK_ENABLED=false, hybrid_rerank silently becomes hybrid.
+    # Run the Phase 8 evals locally (default True) so all four modes are really measured.
     if mode == "hybrid_rerank" and not settings.rerank_enabled:
-        mode = "hybrid"  # reranker switched off to save memory
-        
+        mode = "hybrid"
+    where, params = _filters(remote_only, location, exclude_senior, locations,
+                             exclude_ids, exclude_companies)
+
     with get_conn() as conn:
-        vec_ids = vector_search(conn, query, where, params) if mode != "fts" else []
+        vec_ids = vector_search(conn, query, where, params, qvec=query_vec) if mode != "fts" else []
         fts_ids = fts_search(conn, query, where, params) if mode != "vector" else []
 
         scores = {}

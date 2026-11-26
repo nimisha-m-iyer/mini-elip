@@ -1,16 +1,19 @@
-name: nightly-ingest
+name: daily-digest
 
 on:
   schedule:
-    - cron: "30 20 * * *"   # 20:30 UTC = 02:00 IST. GitHub may run it late.
-  workflow_dispatch:         # lets you start it manually from the Actions tab
+    - cron: "30 3 * * *"   # 03:30 UTC = 09:00 IST, after the 02:00 IST ingest. GitHub may run it late.
+  workflow_dispatch:
 
 jobs:
-  ingest:
+  digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL: openai/gpt-oss-120b
       MODEL_CACHE_DIR: /tmp/models
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +25,5 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: /tmp/models
-          key: fastembed-models-v1
-      - run: python -m app.migrate
-      - run: python -m scripts.ingest
-      - run: python -m scripts.embed
+          key: fastembed-models-v2-rerank
+      - run: python -m scripts.digest
